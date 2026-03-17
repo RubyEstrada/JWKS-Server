@@ -1,47 +1,54 @@
-const jose = require("node-jose");
+const crypto = require("crypto");
+const db = require("./db");
 
-class KeyStore {
-  constructor() {
-    this.keys = [];
-  }
+function generatePrivateKey(expSecondsFromNow) {
+  const { privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+  });
 
-  async init() {
-    const now = Math.floor(Date.now() / 1000);
-    // Active key (expires in 1 hour)
-    const active = await this.generateKey("active-key", now + 3600);
+  const pem = privateKey.export({
+    type: "pkcs1",
+    format: "pem",
+  });
 
-    // Expired key (expired 1 hour ago)
-    const expired = await this.generateKey("expired-key", now - 3600);
+  const exp = Math.floor(Date.now() / 1000) + expSecondsFromNow;
 
-    this.keys.push(active, expired);
-  }
-
-  async generateKey(kid, expiresAt) {
-    const keystore = jose.JWK.createKeyStore();
-    const key = await keystore.generate("RSA", 2048, { kid, alg: "RS256", use: "sig" });
-
-    return {
-      kid,
-      expiresAt,
-      privateKey: key,
-      publicKey: key.toJSON(),
-    };
-  }
-
-  getActiveKey() {
-    return this.keys.find(k => k.kid === "active-key");
-  }
-
-  getExpiredKey() {
-    return this.keys.find(k => k.kid === "expired-key");
-  }
-
-  getUnexpiredPublicKeys() {
-    const now = Math.floor(Date.now() / 1000);
-    return this.keys
-      .filter(k => k.expiresAt > now)
-      .map(k => k.publicKey);
-  }
+  return { pem, exp };
 }
 
-module.exports = KeyStore;
+function insertKey(pem, exp) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      "INSERT INTO keys (key, exp) VALUES (?, ?)",
+      [pem, exp],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.lastID);
+      }
+    );
+  });
+}
+
+async function seedKeysIfNeeded() {
+  return new Promise((resolve, reject) => {
+    db.get("SELECT COUNT(*) AS count FROM keys", [], async (err, row) => {
+      if (err) return reject(err);
+      if (row.count > 0) return resolve();
+
+      const expired = generatePrivateKey(-3600); // expired 1 hr ago
+      const valid = generatePrivateKey(3600);    // valid 1 hr from now
+
+      try {
+        await insertKey(expired.pem, expired.exp);
+        await insertKey(valid.pem, valid.exp);
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+}
+
+module.exports = {
+  seedKeysIfNeeded,
+};
