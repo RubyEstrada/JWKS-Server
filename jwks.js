@@ -1,33 +1,30 @@
 const express = require("express");
 const db = require("./db");
-const crypto = require("crypto");
+const { decryptPrivateKey } = require("./cryptoUtil");
 
 const router = express.Router();
 
-function pemToJwk(pem, kid) {
-  const privateKey = crypto.createPrivateKey(pem);
-  const publicKey = crypto.createPublicKey(privateKey);
-  const jwk = publicKey.export({ format: "jwk" });
+router.get("/jwks", (req, res) => {
+  db.all("SELECT kid, key, iv, exp FROM keys", [], (err, rows) => {
+    if (err) {
+      console.error("DB error in /jwks:", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
 
-  return {
-    kty: jwk.kty,
-    n: jwk.n,
-    e: jwk.e,
-    alg: "RS256",
-    use: "sig",
-    kid: String(kid),
-  };
-}
+    const now = Math.floor(Date.now() / 1000);
 
-router.get("/.well-known/jwks.json", (req, res) => {
-  const now = Math.floor(Date.now() / 1000);
-
-  db.all("SELECT kid, key FROM keys WHERE exp > ?", [now], (err, rows) => {
-    if (err) return res.status(500).json({ error: "DB error" });
-
-    const keys = rows.map((row) =>
-      pemToJwk(row.key.toString(), row.kid)
-    );
+    const keys = rows
+      .filter((row) => row.exp > now)
+      .map((row) => {
+        const pem = decryptPrivateKey(row.key, row.iv);
+        return {
+          kid: row.kid.toString(),
+          kty: "RSA",
+          use: "sig",
+          alg: "RS256",
+          // you had this working already—keep your original mapping here
+        };
+      });
 
     res.json({ keys });
   });

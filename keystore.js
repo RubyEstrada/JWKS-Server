@@ -1,3 +1,4 @@
+const { encryptPrivateKey } = require("./cryptoUtil");
 const crypto = require("crypto");
 const db = require("./db");
 
@@ -17,14 +18,16 @@ function generatePrivateKey(expSecondsFromNow) {
 }
 
 function insertKey(pem, exp) {
+  const { ciphertext, iv } = encryptPrivateKey(pem);
+
   return new Promise((resolve, reject) => {
     db.run(
-      "INSERT INTO keys (key, exp) VALUES (?, ?)",
-      [pem, exp],
+      "INSERT INTO keys (key, iv, exp) VALUES (?, ?, ?)",
+      [ciphertext, iv, exp],
       function (err) {
         if (err) reject(err);
         else resolve(this.lastID);
-      }
+      } 
     );
   });
 }

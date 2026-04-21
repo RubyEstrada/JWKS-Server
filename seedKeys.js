@@ -1,3 +1,4 @@
+const { encryptPrivateKey } = require("./cryptoUtil");
 const crypto = require("crypto");
 const db = require("./db");
 
@@ -19,23 +20,27 @@ async function seedKeys() {
   const expiredKeyPEM = generatePrivateKeyPEM();
   const validKeyPEM = generatePrivateKeyPEM();
 
-  // Insert expired key
-  await new Promise((resolve, reject) => {
-    db.run(
-      `INSERT INTO keys (key, exp) VALUES (?, ?)`,
-      [expiredKeyPEM, now - 10], // expired 10 seconds ago
-      (err) => (err ? reject(err) : resolve())
-    );
-  });
+// Insert expired key
+await new Promise((resolve, reject) => {
+  const { ciphertext, iv } = encryptPrivateKey(expiredKeyPEM);
 
-  // Insert valid key
-  await new Promise((resolve, reject) => {
-    db.run(
-      `INSERT INTO keys (key, exp) VALUES (?, ?)`,
-      [validKeyPEM, now + 3600], // expires in 1 hour
-      (err) => (err ? reject(err) : resolve())
-    );
-  });
+  db.run(
+    `INSERT INTO keys (key, iv, exp) VALUES (?, ?, ?)`,
+    [ciphertext, iv, now - 10],
+    (err) => (err ? reject(err) : resolve())
+  );
+});
+
+// Insert valid key
+await new Promise((resolve, reject) => {
+  const { ciphertext, iv } = encryptPrivateKey(validKeyPEM);
+
+  db.run(
+    `INSERT INTO keys (key, iv, exp) VALUES (?, ?, ?)`,
+    [ciphertext, iv, now + 3600],
+    (err) => (err ? reject(err) : resolve())
+  );
+});
 
   console.log("Seeded expired and valid keys into the database.");
 }

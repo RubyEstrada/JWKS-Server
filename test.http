@@ -1,0 +1,23 @@
+### Register a user
+POST http://127.0.0.1:8080/register
+Content-Type: application/json
+
+{
+  "username": "rubyTest",
+  "email": "ruby@example.com"
+}
+
+### Auth (normal key)
+POST http://127.0.0.1:8080/auth
+Content-Type: application/json
+
+{
+  "username": "rubyTest",
+  "password": "8519d3e5-d9d0-4ef9-a11c-da0642699e05"
+}
+
+### Auth (expired key)
+POST http://127.0.0.1:8080/auth?expired
+
+### JWKS
+GET http://127.0.0.1:8080/.well-known/jwks.json
